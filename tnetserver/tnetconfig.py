@@ -2,16 +2,17 @@ import logging
 import json
 import copy
 import sys
+import os
 
 CONFIG_FILE 		= '/etc/default/tnetserver.conf'
 
 tnet_config = {
 	'mqtt':{
-		'port': 8883
+		'port': 34512
 	},
 	'log': {
 		'level': 0,
-		'output': 'stdout'
+		'dest': 'stdout'
 	}
 }
 

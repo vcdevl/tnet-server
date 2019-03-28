@@ -10,20 +10,17 @@ import json
 import subprocess
 import paho.mqtt.client as mqtt
 
-import tggateway.tgEvent as tgevent
-import tggateway.tgHamachi as tghamachi
-import tggateway.tgTemperature as tgtemperature
-import tggateway.tgConfiguration as tgconfiguration
-import tggateway.tgMetrics as tgmetrics
-import tggateway.tgEmail as tgemail
-import tggateway.tgNetwork as tgnetwork
+#import tggateway.tgEvent as tgevent
+#import tggateway.tgHamachi as tghamachi
+#import tggateway.tgTemperature as tgtemperature
+import tnetserver.tnetconfig as tnetconfig
+#import tggateway.tgMetrics as tgmetrics
+#import tggateway.tgEmail as tgemail
+#import tggateway.tgNetwork as tgnetwork
 
-TNET_UNIT_ID = '1234567890'
-tg_mqtt = None
-tg_apis = None
-
-TNET_API_DEVICE_DISCOVERY_REQ = '{}/discover/REQ'.format(TNET_UNIT_ID)
-TNET_API_DEVICE_DISCOVERY_REQ = '{}/{}/discover/RSP'.format(TNET_UNIT_ID)
+TNET_UNIT_ID = 'TNET-123456789'
+tnet_mqtt = None
+tnet_apis = None
 
 def validate_payload(keys=[],list_of_items=False):
 	def decorator(func):
@@ -56,17 +53,28 @@ def validate_payload(keys=[],list_of_items=False):
 		return wrapper
 	return decorator
 
-class DiscoverApi():
-	''' handler for device discovery request '''
+class DeviceInfoApi():
+	''' handler for device info request '''
 
 	def handler(self, client_id, topic, payload):
-		global mqtt_client
+		global tnet_mqtt
 		# grab all config
-		device_profile = {}
-		rsp = {'success': True, 'data':device_profile, 'error':''}
-		mqtt_client.publish_message(topic='{}/{}/discover/RSP'.format(client_id, TNET_UNIT_ID), message=rsp)
+		device_profile = {
+			'id': TNET_UNIT_ID,
+			'name': '',
+			'description':'',
+			'hardware_version': 'v1.0',
+			'manufacture_date': '2019-Feb-11',
+			'provision_date': '',
+			'user': {},
+			'ham': {},
+			'email': {},
+			'sensor': {},
+			'connectivity': {}}
+		rsp = {'success': 0, 'data':device_profile, 'error':''}
+		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/devinfo'.format(client_id, TNET_UNIT_ID), message=rsp)
 
-class TemperatureNewApi():
+"""class TemperatureNewApi():
 	''' handler for new temperature session request'''
 
 	def handler(self, client_id, topic, payload):
@@ -362,20 +370,19 @@ class NetworkStateApi():
 		global mqtt_client
 		rsp = {'success': True, 'data':{}, 'error':''}
 		mqtt_client.publish_message(topic='{}/{}/network/state/RSP'.format(client_id, TNET_UNIT_ID), message=rsp)
-
+"""
 
 class TgMqtt(object):
 
 	def __init__(self):
-		self._endpoints = {}
 		#{TODO: get name from database }
-		id = 'LCD'
+		id = 'SERVER'
 		self._mqtt = mqtt.Client(client_id=id)
 		self._mqtt.on_connect = self.connected
 		self._mqtt.on_publish = self.message_sent
 		self._mqtt.on_message = self.message_received
 		self._mqtt.on_disconnect = self.disconnected
-		config = tgconfiguration.get_config()
+		config = tnetconfig.get_config()
 		self._mqtt.connect('localhost', config['mqtt']['port'])
 
 	def start(self):
@@ -386,10 +393,6 @@ class TgMqtt(object):
 		self._mqtt.loop_stop()
 		pass
 
-	def register_endpoint(self, in_topic, out_topic, endpoint):
-		if in_topic not in self._endpoints:
-			self._endpoints[in_topic] = (out_topic, endpoint)
-
 	def publish_message(self, topic, message):
 		''' Function callback so board can publish data '''
 
@@ -399,22 +402,34 @@ class TgMqtt(object):
 	def connected(self, client, userdata, flags, rc):
 		''' Mqtt client connected to broker '''
 
+		global tnet_apis
 		logging.debug("Connected to MQTT broker")
 
-		for in_topic in self._endpoints:
-			logging.debug("Subscribing to topic {} [Tuple = {}]".format(in_topic, self._endpoints[in_topic]))
-			self._mqtt.subscribe(in_topic)
+		for tup in tnet_apis:
+			logging.debug("Subscribing to topic {}".format(tup[0]))
+			self._mqtt.subscribe(tup[0])
+
+	def disconnected(self):
+		''' Mqtt client disconnect from broker '''
+		logging.debug('Disconnected from broker')
 
 	def message_received(self, client, userdata, msg):
 		''' Mqtt client received message from broker '''
 
-		global tg_apis
+		global tnet_apis
 		logging.debug("Received MQTT msg: topic={}, payload={}, qos={}, retain={}".format(msg.topic, msg.payload, msg.qos, msg.retain))
 
-		for tup in tg_apis:
+		for tup in tnet_apis:
+			logging.debug(tup)
 			if msg.topic in tup[0]:
-				data = json.loads(msg.payload.decode('utf-8'))
-				tg_apis[msg.topic](client, msg.topic, data)
+				try:
+					data = json.loads(msg.payload.decode('utf-8'))
+					if 'client-id' in data:
+						tup[1].handler(data['client-id'], msg.topic, data)
+					else:
+						logging.warning('No client-id in payload data')
+				except Exception as e:
+					logging.error(e)
 
 	def message_sent(self, client, userdata, mid):
 		''' Mqtt client published message to broker
@@ -425,12 +440,11 @@ class TgMqtt(object):
 
 def start_mqtt():
 	''' create mqtt, register endpoints and api handlers '''
-	global tg_mqtt
-	global tg_apis
+	global tnet_mqtt
+	global tnet_apis
 
-
-	tg_apis = (('{}/discover/REQ'.format(TNET_UNIT_ID), DiscoverApi()),
-				('{}/temperature/new/REQ'.format(TNET_UNIT_ID), TemperatureNewApi()),
+	tnet_apis = (('APIREQ/{}/devinfo'.format(TNET_UNIT_ID), DeviceInfoApi()),
+				"""('{}/temperature/new/REQ'.format(TNET_UNIT_ID), TemperatureNewApi()),
 				('{}/temperature/restart/REQ'.format(TNET_UNIT_ID), TemperatureRestartApi()),
 				('{}/temperature/resume/REQ'.format(TNET_UNIT_ID), TemperatureResumeApi()),
 				('{}/temperature/get/REQ'.format(TNET_UNIT_ID), TemperatureGetApi()),
@@ -466,6 +480,6 @@ def start_mqtt():
 				('{}/network/hamachi/logout/REQ'.format(TNET_UNIT_ID), NetworkHamchiLogoutApi()),
 				('{}/network/hamachi/nickname/REQ'.format(TNET_UNIT_ID), NetworkHamchiNicknameApi()),
 				('{}/network/hamachi/get/REQ'.format(TNET_UNIT_ID), NetworkHamchiGetApi()),
-				('{}/network/state/REQ'.format(TNET_UNIT_ID), NetworkStateApi()))
-	tg_mqtt = TgMqtt()
-	tg_mqtt.start()
+				('{}/network/state/REQ'.format(TNET_UNIT_ID), NetworkStateApi())""")
+	tnet_mqtt = TgMqtt()
+	tnet_mqtt.start()

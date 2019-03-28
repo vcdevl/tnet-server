@@ -5,11 +5,12 @@ import signal
 import sys
 import time
 
-from tnethub import tnetapi, tnetconfig, tnetconnman, tnetemail, tnetevent, tnethamachi, tnetmodel, tnetnetwork, tnetnotify,
-	tnetofono, tnetsms, tnetsystem, tnettemperature, tnetutils
+from tnetserver import tnetapi, tnetconfig
+	#, tnetconnman, tnetemail, tnetevent, tnethamachi, tnetmodel, tnetnetwork, tnetnotify,
+	#tnetofono, tnetsms, tnetsystem, tnettemperature, tnetutils
 
 def signal_handler(signal, frame):
-	logging.info("Caught signal {}, exiting tnethub".format(signal))
+	logging.info("Caught signal {}, exiting tnetserver".format(signal))
 	sys.exit()
 
 signal.signal( signal.SIGINT, signal_handler )
@@ -20,13 +21,13 @@ config = tnetconfig.get_config()
 
 # root logger
 logger = logging.getLogger('')
-logger.setLevel(config['log']'level')
+logger.setLevel(config['log']['level'])
 
 # format for logging
 format = logging.Formatter(fmt='%(asctime)s %(levelname)8s [%(module)10s.%(funcName)10s %(lineno)d] %(message)s', datefmt='%b %d %H:%M:%S')
 
 # log to stdout
-if 'logfile' in config['log']['output']:
+if config['log']['dest'] == 'file' :
 	file_handler = TimedRotatingFileHandler("/var/log/tnet/tnethub.log", when="midnight", interval=1, backupCount=14, encoding=None, delay=True, utc=False)
 	file_handler.setFormatter(format)
 	logger.addHandler(file_handler)
@@ -35,7 +36,9 @@ else:
 	stdout_handler.setFormatter(format)
 	logger.addHandler(stdout_handler)
 
-logging.info("Starting tnethub")
+logging.info("Starting tnetserver")
 
 # start other adapters
 tnetapi.start_mqtt()
+while True:
+	time.sleep(0.1)
