@@ -1,0 +1,12 @@
+[Unit]
+Description=Tempnetz communications server and device controller
+After=multi-user.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/sbin/tnetservice
+
+[Install]
+WantedBy=multi-user.target

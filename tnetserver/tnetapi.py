@@ -8,12 +8,16 @@ import time
 import copy
 import json
 import subprocess
+import threading
+import queue
+import collections
 import paho.mqtt.client as mqtt
 
 #import tggateway.tgEvent as tgevent
 #import tggateway.tgHamachi as tghamachi
 #import tggateway.tgTemperature as tgtemperature
-import tnetserver.tnetconfig as tnetconfig
+#import tnetserver.tnetconfig as tnetconfig
+from tnetserver import tnetconfig, tnetuser
 #import tggateway.tgMetrics as tgmetrics
 #import tggateway.tgEmail as tgemail
 #import tggateway.tgNetwork as tgnetwork
@@ -21,6 +25,9 @@ import tnetserver.tnetconfig as tnetconfig
 TNET_UNIT_ID = 'TNET-123456789'
 tnet_mqtt = None
 tnet_apis = None
+tnet_reqq = None
+
+TnetRequest = collections.namedtuple('TnetRequest', 'client_id, topic, payload')
 
 def validate_payload(keys=[],list_of_items=False):
 	def decorator(func):
@@ -71,8 +78,28 @@ class DeviceInfoApi():
 			'email': {},
 			'sensor': {},
 			'connectivity': {}}
-		rsp = {'success': 0, 'data':device_profile, 'error':''}
+		rsp = {'success': True, 'data':device_profile, 'error':''}
 		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/devinfo'.format(client_id, TNET_UNIT_ID), message=rsp)
+
+class UserRegisterApi():
+	''' handler for registering a user with a device '''
+
+	def handler(self, client_id, topic, payload):
+		global tnet_mqtt
+		rsp = {'success': False, 'data':{}, 'error':''}
+		try:
+			reply = tnetuser.register(payload)
+			if 'success' in reply:
+				rsp['success'] = reply['success']
+			if 'data' in reply:
+				rsp['data'] = reply['data']
+			if 'error' in reply:
+				rsp['error'] = reply['error']
+
+		except Exception as e:
+			logging.error(e)
+
+		mqtt_client.publish_message(topic='APIRSP/{}/{}/user/register'.format(client_id, TNET_UNIT_ID), message=rsp)
 
 """class TemperatureNewApi():
 	''' handler for new temperature session request'''
@@ -138,13 +165,7 @@ class TemperatureRealtimeDataApi():
 		rsp = {'success': True, 'data':{}, 'error':''}
 		mqtt_client.publish_message(topic='{}/{}/temperature/realtimedata/RSP'.format(client_id, TNET_UNIT_ID), message=rsp)
 
-class UserRegisterApi():
-	''' handler for registering a user with a device '''
 
-	def handler(self, client_id, topic, payload):
-		global mqtt_client
-		rsp = {'success': True, 'data':{}, 'error':''}
-		mqtt_client.publish_message(topic='{}/{}/user/register/RSP'.format(client_id, TNET_UNIT_ID), message=rsp)
 
 class UserLoginApi():
 	''' handler for registering a user with a device '''
@@ -387,11 +408,9 @@ class TgMqtt(object):
 
 	def start(self):
 		self._mqtt.loop_start()
-		pass
 
 	def stop(self):
 		self._mqtt.loop_stop()
-		pass
 
 	def publish_message(self, topic, message):
 		''' Function callback so board can publish data '''
@@ -404,10 +423,12 @@ class TgMqtt(object):
 
 		global tnet_apis
 		logging.debug("Connected to MQTT broker")
-
-		for tup in tnet_apis:
-			logging.debug("Subscribing to topic {}".format(tup[0]))
-			self._mqtt.subscribe(tup[0])
+		try:
+			for tup in tnet_apis:
+				logging.debug("Subscribing to topic {}".format(tup[0]))
+				self._mqtt.subscribe(tup[0])
+		except Exception as e:
+			logging.error(e)
 
 	def disconnected(self):
 		''' Mqtt client disconnect from broker '''
@@ -417,15 +438,16 @@ class TgMqtt(object):
 		''' Mqtt client received message from broker '''
 
 		global tnet_apis
+		global tnet_reqq
 		logging.debug("Received MQTT msg: topic={}, payload={}, qos={}, retain={}".format(msg.topic, msg.payload, msg.qos, msg.retain))
 
 		for tup in tnet_apis:
-			logging.debug(tup)
 			if msg.topic in tup[0]:
 				try:
 					data = json.loads(msg.payload.decode('utf-8'))
 					if 'client-id' in data:
-						tup[1].handler(data['client-id'], msg.topic, data)
+						# enqueue request
+						tnet_reqq.put(TnetRequest(client_id=data['client-id'], topic=msg.topic, payload=data))
 					else:
 						logging.warning('No client-id in payload data')
 				except Exception as e:
@@ -437,49 +459,41 @@ class TgMqtt(object):
 
 		logging.debug("Published MQTT msg: Mid = {}".format(mid))
 
+def raise_alert(topic, payload):
+	''' Public method to publish message from event manager '''
+
+	global tnet_mqtt
+	tnet_mqtt.publish_message(topic, payload)
 
 def start_mqtt():
 	''' create mqtt, register endpoints and api handlers '''
+
 	global tnet_mqtt
 	global tnet_apis
+	global tnet_reqq
 
-	tnet_apis = (('APIREQ/{}/devinfo'.format(TNET_UNIT_ID), DeviceInfoApi()),
-				"""('{}/temperature/new/REQ'.format(TNET_UNIT_ID), TemperatureNewApi()),
-				('{}/temperature/restart/REQ'.format(TNET_UNIT_ID), TemperatureRestartApi()),
-				('{}/temperature/resume/REQ'.format(TNET_UNIT_ID), TemperatureResumeApi()),
-				('{}/temperature/get/REQ'.format(TNET_UNIT_ID), TemperatureGetApi()),
-				('{}/temperature/stopctl/REQ'.format(TNET_UNIT_ID), TemperatureStopCtlApi()),
-				('{}/temperature/startctl/REQ'.format(TNET_UNIT_ID), TemperatureStartCtlApi()),
-				('{}/temperature/logdata/REQ'.format(TNET_UNIT_ID), TemperatureLogdataApi()),
-				('{}/temperature/realtimedata/REQ'.format(TNET_UNIT_ID), TemperatureRealtimeDataApi()),
-				('{}/user/register/REQ'.format(TNET_UNIT_ID), UserRegisterApi()),
-				('{}/user/login/REQ'.format(TNET_UNIT_ID), UserLoginApi()),
-				('{}/user/add/REQ'.format(TNET_UNIT_ID), UserAddApi()),
-				('{}/user/delete/REQ'.format(TNET_UNIT_ID), UserDeleteApi()),
-				('{}/user/edit/REQ'.format(TNET_UNIT_ID), UserEditApi()),
-				('{}/user/get/REQ'.format(TNET_UNIT_ID), UserGetApi()),
-				('{}/system/metrics/REQ'.format(TNET_UNIT_ID), SystemMetricsApi()),
-				('{}/system/shutdown/REQ'.format(TNET_UNIT_ID), SystemShutdownApi()),
-				('{}/audio/on/REQ'.format(TNET_UNIT_ID), AudioOnApi()),
-				('{}/audio/off/REQ'.format(TNET_UNIT_ID), AudioOffApi()),
-				('{}/audio/get/REQ'.format(TNET_UNIT_ID), AudioGetApi()),
-				('{}/network/wifi/scan/REQ'.format(TNET_UNIT_ID), NetworkWifiScanApi()),
-				('{}/network/wifi/connect/REQ'.format(TNET_UNIT_ID), NetworkWifiConnectApi()),
-				('{}/network/wifi/disconnect/REQ'.format(TNET_UNIT_ID), NetworkWifiDisconnectApi()),
-				('{}/network/wifi/forget/REQ'.format(TNET_UNIT_ID), NetworkWifiForgetApi()),
-				('{}/network/wifi/enable/REQ'.format(TNET_UNIT_ID), NetworkWifiEnableApi()),
-				('{}/network/wifi/disable/REQ'.format(TNET_UNIT_ID), NetworkWifiDisableApi()),
-				('{}/network/wifi/get/REQ'.format(TNET_UNIT_ID), NetworkWifiGetApi()),
-				('{}/network/cellular/enable/REQ'.format(TNET_UNIT_ID), NetworkCellularEnableApi()),
-				('{}/network/cellular/disable/REQ'.format(TNET_UNIT_ID), NetworkCellularDisableApi()),
-				('{}/network/cellular/get/REQ'.format(TNET_UNIT_ID), NetworkCellularGetApi()),
-				('{}/network/cellular/apn/REQ'.format(TNET_UNIT_ID), NetworkCellularApnApi()),
-				('{}/network/hamachi/join/REQ'.format(TNET_UNIT_ID), NetworkHamchiJoinApi()),
-				('{}/network/hamachi/leave/REQ'.format(TNET_UNIT_ID), NetworkHamchiLeaveApi()),
-				('{}/network/hamachi/login/REQ'.format(TNET_UNIT_ID), NetworkHamchiLoginApi()),
-				('{}/network/hamachi/logout/REQ'.format(TNET_UNIT_ID), NetworkHamchiLogoutApi()),
-				('{}/network/hamachi/nickname/REQ'.format(TNET_UNIT_ID), NetworkHamchiNicknameApi()),
-				('{}/network/hamachi/get/REQ'.format(TNET_UNIT_ID), NetworkHamchiGetApi()),
-				('{}/network/state/REQ'.format(TNET_UNIT_ID), NetworkStateApi())""")
+	tnet_apis = (
+		('APIREQ/{}/devinfo'.format(TNET_UNIT_ID), DeviceInfoApi()),
+		('APIREQ/{}/user/register'.format(TNET_UNIT_ID), UserRegisterApi()))
+
+	tnet_reqq = queue.Queue(maxsize=50)
 	tnet_mqtt = TgMqtt()
 	tnet_mqtt.start()
+
+	logging.debug('Starting queue handler')
+	# dequeue messages and execute handlers
+	while True:
+
+		time.sleep(0.1)
+		try:
+			if not tnet_reqq.empty():
+				request = tnet_reqq.get()
+				for tup in tnet_apis:
+					if request.topic in tup[0]:
+						tup[1].handler(request.client_id, request.topic, request.payload)
+				tnet_reqq.task_done()
+			#else:
+			#	logging.debug('No requests to dequeue')
+		except Exception as e:
+			logging.warning(e)
+			continue

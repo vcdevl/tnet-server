@@ -13,6 +13,10 @@ tnet_config = {
 	'log': {
 		'level': 0,
 		'dest': 'stdout'
+	},
+	'database': {
+		'type': 'file',
+		'path': '/home/tgard/config/tnetdb'
 	}
 }
 
@@ -32,6 +36,19 @@ def load_config():
 	if 'mqtt' in config and 'port' in config['mqtt']:
 		tnet_config['mqtt']['port'] = config['mqtt']['port']
 
+	if 'log' in config:
+		if 'level' in config['log'] and config['log']['level'] >= logging.DEBUG and config['log']['level'] < logging.CRITICAL:
+			tnet_config['log']['level'] = config['log']['level']
+
+		if 'dest' in config['log'] and config['log']['dest'] == 'file' or config['log']['dest'] == 'stdout':
+			tnet_config['log']['dest'] = config['log']['dest']
+
+	if 'database' in config:
+		if 'type' in config['database'] and config['database']['type'] == 'file' or config['database']['type'] == 'mongo':
+			tnet_config['database']['type'] = config['database']['type']
+
+		if 'path' in config['database']:
+			tnet_config['database']['path'] = config['database']['path']
 
 def get_config():
 	''' get config '''
