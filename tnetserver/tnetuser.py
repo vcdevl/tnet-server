@@ -37,7 +37,7 @@ def validate_payload(keys=[]):
 				if key not in payload:
 					error_str = 'Payload missing key {}'.format(key)
 					logging.warning(error_str)
-					return {'success': False, data:{}, 'error':error_str}
+					return {'success': False, 'data':{}, 'error':error_str}
 
 			return func(*args, **kwargs)
 		return wrapper
@@ -76,9 +76,11 @@ def register(payload):
 
 		# do the database insert
 		tnetdatabase.insert_user(new_user)
+		reply['data'] = new_user
+		reply['success'] = True
 
 		# read back and confirm
-		confirm_user = tnetdatabase.get_user(new_user['email'])
+		"""confirm_user = tnetdatabase.get_user(new_user['email'])
 
 		user_confirmed = False
 
@@ -100,9 +102,30 @@ def register(payload):
 
 		if user_confirmed:
 			reply['data'] = new_user
-			reply['success'] = True
+			reply['success'] = True"""
 
 	logging.info(reply['error'])
+	return reply
+
+
+def get(payload):
+	reply = {
+		'success': False,
+		'data': [],
+		'error': ''
+	}
+
+	# get users which returns list
+	users = tnetdatabase.get_user()
+	logging.debug('Get user result = {}'.format(users))
+
+	for user in users:
+		if all(x in user for x in ['first', 'last', 'username', 'email', 'password', 'admin', 'alerts']):
+			reply['data'].append(user)
+		else:
+			logging.warning('User missing some fields')
+
+	reply['success'] = True
 	return reply
 
 """@validate_payload(keys=['username', 'password', 'deviceId'])
@@ -148,30 +171,7 @@ def login(payload):
 def edit(payload):
 	return { 'success': False,  'data': {}, 'error': 'Not implemented yet'}
 
-@validate_payload(keys=['userId','token'])
-@verify_token
-def get(payload):
-	reply = {
-		'success': False,
-		'data': [],
-		'error': ''
-	}
 
-	# get users which returns list
-	users = tnetdatabase.get_user()
-	logging.debug('Get user result = {}'.format(users))
-
-	for user in users:
-		if all(x in user for x in ['id', 'firstName', 'lastName', 'isAdmin']):
-			reply['data'].append({'id':user['id'],
-				'firstName':user['firstName'],
-				'lastName':user['lastName'],
-				'isAdmin':user['isAdmin']})
-		else:
-			logging.warning('User missing some fields')
-
-	reply['success'] = True
-	return reply
 
 @validate_payload(keys=['userId', 'token'])
 @verify_token

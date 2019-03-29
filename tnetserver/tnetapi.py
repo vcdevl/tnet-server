@@ -73,10 +73,11 @@ class DeviceInfoApi():
 			'hardware_version': 'v1.0',
 			'manufacture_date': '2019-Feb-11',
 			'provision_date': '',
-			'user': {},
+			'user': tnetuser.get(),
 			'ham': {},
 			'email': {},
 			'sensor': {},
+			'system': {},
 			'connectivity': {}}
 		rsp = {'success': True, 'data':device_profile, 'error':''}
 		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/devinfo'.format(client_id, TNET_UNIT_ID), message=rsp)
@@ -99,7 +100,7 @@ class UserRegisterApi():
 		except Exception as e:
 			logging.error(e)
 
-		mqtt_client.publish_message(topic='APIRSP/{}/{}/user/register'.format(client_id, TNET_UNIT_ID), message=rsp)
+		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/user/register'.format(client_id, TNET_UNIT_ID), message=rsp)
 
 """class TemperatureNewApi():
 	''' handler for new temperature session request'''

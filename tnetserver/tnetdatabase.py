@@ -15,7 +15,7 @@ def db_valid(func):
 		global tnetdb
 		config = tnetconfig.get_config()
 
-		if not os.path.exists(config['database']['path'])
+		if not os.path.exists(config['database']['path']):
 			open(config['database']['path'], 'w').close()
 		else:
 			data = {}
@@ -106,6 +106,7 @@ def count_users():
 @db_valid
 def get_user(username=None):
 	global tnetdb
+	logging.debug('Get user: tnetdb = {}'.format(tnetdb))
 	collection = tnetdb['user']
 	all_users = []
 	if username is None:
