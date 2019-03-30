@@ -4,7 +4,7 @@ import os
 import time
 from functools import wraps
 
-from tnetserver import tnetdatabase
+from tnetserver import tnetdatabase, tnetutil
 
 
 def verify_user(f):
@@ -43,13 +43,12 @@ def validate_payload(keys=[]):
 		return wrapper
 	return decorator
 
-@validate_payload(keys=['first', 'last', 'email', 'password', 'username', 'alerts'])
+@tnetutil.validate_payload(keys=['first', 'last', 'email', 'password', 'username', 'alerts'])
 def register(payload):
-	reply = {
-		'success': False,
-		'data': {},
-		'error': ''
-	}
+	''' register an admin user (one time request during device provisioning)
+		users can be added via the add() method '''
+
+	reply = {'success': False, 'data': {}, 'error': ''}
 
 	# first get all users
 	this_user = tnetdatabase.get_user(payload['email'])
@@ -75,45 +74,21 @@ def register(payload):
 		}
 
 		# do the database insert
-		tnetdatabase.insert_user(new_user)
-		reply['data'] = new_user
-		reply['success'] = True
-
-		# read back and confirm
-		"""confirm_user = tnetdatabase.get_user(new_user['email'])
-
-		user_confirmed = False
-
-		if len(confirm_user) == 1:
-			if not all(fields in confirm_user[0].keys() for fields in ['first', 'last', 'email', 'username', 'password', 'alerts']):
-				# try delete dangling reference to user
-				tnetdatabase.delete_user(new_user['email'])
-				reply['error'] = 'Corrupted user registration, will delete user'
-
-			elif new_user != confirm_user:
-				tnetdatabase.delete_user(new_user['email'])
-				reply['error'] = 'Failed to verify user registeration, will delete user'
-			else:
-				user_confirmed = True
-
-		else:
-			logging.debug('Found {} users with email={}'.format(len(confirm_user), new_user['email']))
-			reply['error'] = 'Failed to verify user registeration'
-
-		if user_confirmed:
+		if tnetdatabase.insert_user(new_user):
+			logging.debug("User with email={} created".format(user["email"]))
 			reply['data'] = new_user
-			reply['success'] = True"""
+			reply['success'] = True
+		else:
+			reply['error'] = 'Failed to create user'
+			logging.warning(reply['error'])
 
-	logging.info(reply['error'])
 	return reply
 
 
 def get(payload):
-	reply = {
-		'success': False,
-		'data': [],
-		'error': ''
-	}
+	''' get all users '''
+
+	reply = {'success': False, 'data': [], 'error': ''}
 
 	# get users which returns list
 	users = tnetdatabase.get_user()
@@ -127,6 +102,23 @@ def get(payload):
 
 	reply['success'] = True
 	return reply
+
+
+@tnetutil.validate_payload(keys=['first', 'last', 'username', 'password', 'alerts'])
+def edit(payload):
+	''' edit a user '''
+
+	reply = {'success': False, 'data': {}, 'error': ''}
+
+	if tnetdatabase.edit_user():
+		logging.debug('Edited user first={} last={}'.format(payload['first'], payload['last']))
+		reply['success'] = True
+	else:
+		reply['error'] = 'Failed to edit user'
+		logging.warning(reply['error'])
+
+	return reply
+
 
 """@validate_payload(keys=['username', 'password', 'deviceId'])
 def login(payload):
@@ -166,10 +158,7 @@ def login(payload):
 	logging.info(reply['error'])
 	return reply
 
-@validate_payload(keys=['userId', 'token', 'password', 'deviceId'])
-@verify_token
-def edit(payload):
-	return { 'success': False,  'data': {}, 'error': 'Not implemented yet'}
+
 
 
 
@@ -186,7 +175,7 @@ def delete(payload):
 		'data': {},
 		'error': ''
 	}
-
+	logging.debug('Removed user first={} last={}'.format(removed_user['first'], removed_user['last']))
 	# can't delete the primary user i.e. user with Id = 1
 	if payload['userId'] == 1:
 		reply['error'] = 'Not permissible to delete user with Id=1'

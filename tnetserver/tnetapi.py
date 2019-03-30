@@ -13,14 +13,8 @@ import queue
 import collections
 import paho.mqtt.client as mqtt
 
-#import tggateway.tgEvent as tgevent
-#import tggateway.tgHamachi as tghamachi
-#import tggateway.tgTemperature as tgtemperature
-#import tnetserver.tnetconfig as tnetconfig
 from tnetserver import tnetconfig, tnetuser
-#import tggateway.tgMetrics as tgmetrics
-#import tggateway.tgEmail as tgemail
-#import tggateway.tgNetwork as tgnetwork
+
 
 TNET_UNIT_ID = 'TNET-123456789'
 tnet_mqtt = None
@@ -29,31 +23,7 @@ tnet_reqq = None
 
 TnetRequest = collections.namedtuple('TnetRequest', 'client_id, topic, payload')
 
-def validate_payload(keys=[], rsp_topic):
-	def decorator(func):
-		@wraps(func)
-		def wrapper(*args, **kwargs):
-
-			client_id = args[1]
-			#topic = args[2] (request topic)
-			payload = args[3]
-
-
-			for item in payload['data']:
-				if not all(x in item for x in keys):
-					error_str = 'Missing fields in payload'
-					logging.warning(error_str)
-					rsp = {'success': False, 'data':{}, 'error':error_str}
-					global tnet_mqtt
-					tnet_mqtt.publish_message(topic=rsp_topic.format(client_id, TNET_UNIT_ID), message=rsp)
-					return
-
-			func(*args, **kwargs)
-
-		return wrapper
-	return decorator
-
-def send_message(keys=[], rsp_topic):
+def send_message(rsp_topic):
 	def decorator(func):
 		@wraps(func)
 		def wrapper(*args, **kwargs):
@@ -81,59 +51,21 @@ class DeviceGetInfoApi():
 
 	@send_response(topic='APIRSP/{}/{}/devinfo/get')
 	def handler(self, client_id, topic, payload):
-		global tnet_mqtt
-		rsp = {'success': False, 'data':{}, 'error':''}
-		reply = tnetdevice.get_info()
-
-		"""device_profile = {
-			'id': TNET_UNIT_ID,
-			'name': '',
-			'description':'',
-			'hardware_version': 'v1.0',
-			'manufacture_date': '2019-Feb-11',
-			'provision_date': '',
-			'user': tnetuser.get(),
-			'ham': {},
-			'email': {},
-			'sensor': {},
-			'system': {},
-			'connectivity': {}}"""
-		rsp = {'success': True, 'data':device_profile, 'error':''}
-		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/devinfo/get'.format(client_id, TNET_UNIT_ID), message=rsp)
+		return tnetdevice.get_info()
 
 class DeviceSetInfoApi():
 	''' handler for set device info request '''
 
-	@validate_payload(['name', 'description'], 'APIRSP/{}/{}/devinfo/set')
+	@send_response(topic='APIRSP/{}/{}/devinfo/set')
 	def handler(self, client_id, topic, payload):
-		global tnet_mqtt
-		rsp = {'success': False, 'data':{}, 'error':''}
-		device_profile = {
-			'name': payload['name'],
-			'description': payload['description']}
-		result = tnetdevice.update_info(device_profile)
-
-		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/devinfo/set'.format(client_id, TNET_UNIT_ID), message=rsp)
+		return tnetdevice.update_info(payload)
 
 class UserRegisterApi():
 	''' handler for registering a user with a device '''
 
+	@send_response(topic='APIRSP/{}/{}/user/register')
 	def handler(self, client_id, topic, payload):
-		global tnet_mqtt
-		rsp = {'success': False, 'data':{}, 'error':''}
-		try:
-			reply = tnetuser.register(payload)
-			if 'success' in reply:
-				rsp['success'] = reply['success']
-			if 'data' in reply:
-				rsp['data'] = reply['data']
-			if 'error' in reply:
-				rsp['error'] = reply['error']
-
-		except Exception as e:
-			logging.error(e)
-
-		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/user/register'.format(client_id, TNET_UNIT_ID), message=rsp)
+		return tnetuser.register(payload)
 
 """class TemperatureNewApi():
 	''' handler for new temperature session request'''

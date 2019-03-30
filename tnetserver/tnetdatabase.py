@@ -2,120 +2,146 @@ import logging
 import sys
 import os
 import json
+import copy
 from functools import wraps
 
-from tnetserver import tnetconfig
+DEVINFO_FILE = '/home/tgard/db/devinfo.json'
+USER_FILE = '/home/tgard/db/user.json'
+HAM_FILE = '/home/tgard/db/ham.json'
+EMAIL_FILE = '/home/tgard/db/email.json'
+SESSION_FILE = '/home/tgard/db/session.json'
 
-tnetdb = {'user':[], 'device':{}}
+user_collection = []
+devinfo_collection = {
+	'id': '',
+	'name': '',
+	'description':'',
+	'hardware_version': '',
+	'manufacture_date': '',
+	'provision_date': '',
+	'software_version': {'libcomm': '','libchart': '','appgui': '','server': ''},
+	'timezone':'',
+	'locale':''}
+hamachi_collection = {'client_id':'', 'ipv4_address':'', 'network_id':''}
+email_collection = {'url':'', 'port': -1, 'user':'', 'pass':''}
+connectivity_collection = {'preferred_interface':'', 'single_connection':False}
+cell3g_collection = {'number':'', 'imei': '', 'puk':'', 'provider':'', 'pin': '', 'apn':'', 'enable': False}
+system_settings_collection = {}
+av_settings_collection = {}
 
-def db_valid(func):
+"""sensor = {'pos':0, 'id':'', 'name':'', 'a1':0, 'a2':0, 'diffmode':0, 'a1trig': False, 'a2trig': False, 'temp':0, 'alarm_status':0, 'fault': False}
+session {
+	'id':'',
+	'name':'',
+	'start_date':'',
+	'end_date':'',
+	'total_sensors':'',
+	'global_alarm_status':'',
+	'alarm_interpretation': '',
+	'log_interval': 0,
+	'sensors': []}"""
+session_collection = []
 
-	@wraps(func)
-	def decorator(*args, **kwargs):
-		global tnetdb
-		config = tnetconfig.get_config()
 
-		if not os.path.exists(config['database']['path']):
-			open(config['database']['path'], 'w').close()
-		else:
-			data = {}
+def db_load(collection, path, update=False):
+	def decorator(func):
+		@wraps(func)
+		def wrapper(*args, **kwargs):
+
 			try:
-				with open(config['database']['path'], 'r') as f:
-					data = json.load(f)
+				# create file if not exist
+				if not os.path.exists(path):
+					with open(path, 'w') as f:
+						json.dump(collection, f)
+				else:
+					with open(path, 'r') as f:
+						collection = json.load(f)
 			except Exception as e:
 				logging.error(e)
 
-			if 'user' in data:
-				tnetdb['user'] = data['user']
+			if func(*args, **kwargs) and update:
+				with open(path, 'w') as f:
+					json.dump(collection, f)
 
-			if 'device' in data:
-				tnetdb['device'] = data['device']
-
-		return func(*args, **kwargs)
+		return wrapper
 	return decorator
 
-def db_save(func):
-
-	@wraps(func)
-	def decorator(*args, **kwargs):
-		global tnetdb
-		config = tnetconfig.get_config()
-
-		if func(*args, **kwargs):
-			with open(config['database']['path'], 'w') as f:
-				json.dump(tnetdb, f)
-
-	return decorator
-
-@db_valid
-@db_save
+@db_load(collection=user_collection, path=USER_FILE, update=True)
 def insert_user(user):
-	global tnetdb
-	collection = tnetdb['user']
-	if collection:
-		for u in collection:
+	global user_collection
+	if user_collection:
+		for u in user_collection:
 			if user['email'] == u['email']:
 				return False
 
-	collection.append(user)
-	logging.debug("User with email={} created".format(user["email"]))
+	user_collection.append(user)
 	return True
 
-@db_valid
-@db_save
+@db_load(collection=user_collection, path=USER_FILE, update=True)
 def edit_user(user):
-	global tnetdb
-	collection = tnetdb['user']
+	global user_collection
 	user_edited = False
-	if collection:
-		for u in collection:
+	if user_collection:
+		for u in user_collection:
 			if user['email'] == u['email']:
 				u['password'] = user['password']
 				u['settings'] = user['settings']
 				u['first'] = user['first']
 				u['last'] = user['last']
-				logging.debug('Edited user first={} last={}'.format(user['first'], user['last']))
 				user_edited = True
 
 	return user_edited
 
-@db_valid
-@db_save
+@db_load(collection=user_collection, path=USER_FILE, update=True)
 def delete_user(user_id):
-	global tnetdb
-	collection = tnetdb['user']
+	global user_collection
 	user_removed = False
-	if collection:
-		for u in collection:
+	if user_collection:
+		for u in user_collection:
 			if user['email'] == u['email']:
-				removed_user = collection.pop(collection.index(u))
-				logging.debug('Removed user first={} last={}'.format(removed_user['first'], removed_user['last']))
+				removed_user = user_collection.pop(user_collection.index(u))
 				user_removed = True
 
 	return user_removed
 
-@db_valid
+@db_load(collection=user_collection, path=USER_FILE)
 def count_users():
-	global tnetdb
-	collection = tnetdb['user']
+	global user_collection
 	count = 0
-	for u in collection:
+	for u in user_collection:
 		count += 1
+
 	return count
 
-@db_valid
+@db_load(collection=user_collection, path=USER_FILE)
 def get_user(username=None):
-	global tnetdb
-	logging.debug('Get user: tnetdb = {}'.format(tnetdb))
-	collection = tnetdb['user']
+	global user_collection
 	all_users = []
 	if username is None:
-		for u in collection:
+		for u in user_collection:
 			all_users.append(u)
 	else:
-		if collection:
-			for u in collection:
+		if user_collection:
+			for u in user_collection:
 				if u['email'] == username:
 					all_users.append(u)
 
-	return all_users
+	return copy.copy(all_users)
+
+
+
+
+db_load(collection=session_collection, path=SESSION_FILE)
+def get_session(id=None)
+	global session_collection
+	all_sessions = []
+	if id is None:
+		for s in session_collection:
+			all_sessions.append(s)
+	else:
+		if session_collection:
+			for s in session_collection:
+				if s['id'] == id:
+					all_sessions.append(s)
+
+	return copy.copy(all_sessions)
