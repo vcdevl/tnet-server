@@ -50,6 +50,12 @@ def register(payload):
 
 	reply = {'success': False, 'data': {}, 'error': ''}
 
+	if not all(alert_fields in payload['alerts'] for alert_fields in ['alarm1', 'alarm2', 'sensorFault',
+		'sessionChange', 'networkChange', 'powerChange', 'batteryLow', 'systemOff', 'systemOn']:
+		reply['error'] = 'Missing alert fields'
+		logging.warning(reply['error'])
+		return reply 
+
 	# first get all users
 	this_user = tnetdatabase.get_user(payload['email'])
 

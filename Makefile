@@ -1,6 +1,7 @@
 .PHONY: dock-build \
 	dock-whl \
 	local-whl \
+	test-install \
 	scp-tnet
 
 scp-tnet:
@@ -8,6 +9,9 @@ scp-tnet:
 
 local-whl:
 	python3 setup.py sdist bdist_wheel
+
+test-install:
+	sudo pip3 install --upgrade dist/tnetserver-1.0-py3-none-any.whl
 
 dock:
 	docker build --file=./docker/Dockerfile --tag=tnetwhl .
