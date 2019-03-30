@@ -29,30 +29,23 @@ tnet_reqq = None
 
 TnetRequest = collections.namedtuple('TnetRequest', 'client_id, topic, payload')
 
-def validate_payload(keys=[],list_of_items=False):
+def validate_payload(keys=[], rsp_topic):
 	def decorator(func):
 		@wraps(func)
 		def wrapper(*args, **kwargs):
 
-			topic = args[1]
-			payload = args[2]
+			client_id = args[1]
+			#topic = args[2] (request topic)
+			payload = args[3]
 
-			if not all(key in payload for key in ['success', 'data', 'error']):
-				print('Payload invalid for {}'.format(topic))
-				return
 
-			if not payload['success']:
-				print('Api {} response failed with {}'.format(topic, payload['error']))
-				return
-
-			if list_of_items:
-				for item in payload['data']:
-					if not all(x in item for x in keys):
-						print('Payload missing fields in data')
-						return
-			else:
-				if not all(x in payload['data'] for x in keys):
-					print('Payload missing fields in data')
+			for item in payload['data']:
+				if not all(x in item for x in keys):
+					error_str = 'Missing fields in payload'
+					logging.warning(error_str)
+					rsp = {'success': False, 'data':{}, 'error':error_str}
+					global tnet_mqtt
+					tnet_mqtt.publish_message(topic=rsp_topic.format(client_id, TNET_UNIT_ID), message=rsp)
 					return
 
 			func(*args, **kwargs)
@@ -60,13 +53,39 @@ def validate_payload(keys=[],list_of_items=False):
 		return wrapper
 	return decorator
 
-class DeviceInfoApi():
-	''' handler for device info request '''
+def send_message(keys=[], rsp_topic):
+	def decorator(func):
+		@wraps(func)
+		def wrapper(*args, **kwargs):
+			global tnet_mqtt
+			global TNET_UNIT_ID
 
+			client_id = args[1]
+			rsp = {'success': False, 'data':{}, 'error':'Unknown error'}
+
+			reply = func(*args, **kwargs)
+
+			if 'success' in reply:
+				rsp['success'] = reply['success']
+			if 'data' in reply:
+				rsp['data'] = reply['data']
+			if 'error' in reply:
+				rsp['error'] = reply['error']
+
+			tnet_mqtt.publish_message(topic=rsp_topic.format(client_id, TNET_UNIT_ID), message=rsp)
+		return wrapper
+	return decorator
+
+class DeviceGetInfoApi():
+	''' handler for get device info request '''
+
+	@send_response(topic='APIRSP/{}/{}/devinfo/get')
 	def handler(self, client_id, topic, payload):
 		global tnet_mqtt
-		# grab all config
-		device_profile = {
+		rsp = {'success': False, 'data':{}, 'error':''}
+		reply = tnetdevice.get_info()
+
+		"""device_profile = {
 			'id': TNET_UNIT_ID,
 			'name': '',
 			'description':'',
@@ -78,9 +97,23 @@ class DeviceInfoApi():
 			'email': {},
 			'sensor': {},
 			'system': {},
-			'connectivity': {}}
+			'connectivity': {}}"""
 		rsp = {'success': True, 'data':device_profile, 'error':''}
-		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/devinfo'.format(client_id, TNET_UNIT_ID), message=rsp)
+		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/devinfo/get'.format(client_id, TNET_UNIT_ID), message=rsp)
+
+class DeviceSetInfoApi():
+	''' handler for set device info request '''
+
+	@validate_payload(['name', 'description'], 'APIRSP/{}/{}/devinfo/set')
+	def handler(self, client_id, topic, payload):
+		global tnet_mqtt
+		rsp = {'success': False, 'data':{}, 'error':''}
+		device_profile = {
+			'name': payload['name'],
+			'description': payload['description']}
+		result = tnetdevice.update_info(device_profile)
+
+		tnet_mqtt.publish_message(topic='APIRSP/{}/{}/devinfo/set'.format(client_id, TNET_UNIT_ID), message=rsp)
 
 class UserRegisterApi():
 	''' handler for registering a user with a device '''
@@ -474,7 +507,8 @@ def start_mqtt():
 	global tnet_reqq
 
 	tnet_apis = (
-		('APIREQ/{}/devinfo'.format(TNET_UNIT_ID), DeviceInfoApi()),
+		('APIREQ/{}/devinfo/get'.format(TNET_UNIT_ID), DeviceGetInfoApi()),
+		('APIREQ/{}/devinfo/set'.format(TNET_UNIT_ID), DeviceSetInfoApi()),
 		('APIREQ/{}/user/register'.format(TNET_UNIT_ID), UserRegisterApi()))
 
 	tnet_reqq = queue.Queue(maxsize=50)
