@@ -1,33 +1,45 @@
+import json
+import os
+import sys
+import signal
+import logging
 from functools import wraps
 import pytest
-from tnetserver import tnetuser, tnetdevice
+from tnetserver import tnetuser, tnetdevice, tnetdatabase, tnetconfig
 
 
 def validate_reply(reply):
-	assert not all(fields in reply for fields in ['success', 'data', 'error'])
-	assert reply['success'] and reply['error'] != ''
-	assert not reply['success'] and reply['error'] == ''
+	assert all(fields in reply for fields in ['success', 'data', 'error']), "Missing field(s) in reply"
+	if reply['success']:
+		assert reply['success'] and reply['error'] == ''
+	else:
+		assert not reply['success'] and reply['error'] != ''
 
 
 
-def test_api_dev_info_get():
+def api_dev_info_get():
 	reply = tnetdevice.get_info()
+	print('Device info = {}'.format(reply))
 	validate_reply(reply)
-	assert not all( fields in reply['data'] for fields in ['id', 'name', 'description', 'hardware_version',
+	assert all( fields in reply['data'] for fields in ['id', 'name', 'description', 'hardware_version',
 		'manufacture_date', 'provision_date', 'software_version', 'timezone', 'locale'] )
-	assert not all( fields in reply['data']['software_version'] for fields in ['libcomm', 'libchart', 'appgui', 'server'])
+	assert all( fields in reply['data']['software_version'] for fields in ['libcomm', 'libchart', 'appgui', 'server'])
 
-def test_api_dev_info_set():
-	reply = tnetdevice.update_info({'name':'TEST DEVICE', 'description': 'TEST DEVICE UPDATING DESCRIPTION'})
+def api_dev_info_set():
+
+	TEST_DEVICE_NAME = 'ROCK CRUSHER'
+	TEST_DEVICE_DESCRIPTION = 'SMASHES HARD ROCKS TO DUST'
+
+	reply = tnetdevice.update_info({'name':TEST_DEVICE_NAME, 'description': TEST_DEVICE_DESCRIPTION})
 	validate_reply(reply)
 
 	info = tnetdevice.get_info()
 	validate_reply(reply)
-	assert not all( fields in reply['data'] for fields in ['name', 'description'])
-	assert reply['data']['name'] != 'TEST DEVICE'
-	assert reply['data']['description'] != 'TEST DEVICE UPDATING DESCRIPTION'
+	assert all( fields in reply['data'] for fields in ['name', 'description'])
+	assert reply['data']['name'] == TEST_DEVICE_NAME
+	assert reply['data']['description'] == TEST_DEVICE_DESCRIPTION
 
-def test_api_user_register():
+def api_user_register():
 
 	TEST_USER_FIRST = 'Joe'
 	TEST_USER_LAST = 'Smith'
@@ -46,7 +58,7 @@ def test_api_user_register():
 	TEST_USER_ALERTS_SYSTEM_ON = True
 
 
-	reply = tnetuser.update_info({'first':TEST_USER_FIRST,
+	reply = tnetuser.register({'first':TEST_USER_FIRST,
 		'last': TEST_USER_LAST,
 		'username': TEST_USER_USERNAME,
 		'email': TEST_USER_EMAIL,
@@ -57,22 +69,48 @@ def test_api_user_register():
 			'powerChange':TEST_USER_ALERTS_POWER_CHANGE, 'batteryLow':TEST_USER_ALERTS_BATTERY_LOW, 'systemOff':TEST_USER_ALERTS_SYSTEM_OFF,
 			'systemOn':TEST_USER_ALERTS_SYSTEM_ON}})
 	validate_reply(reply)
-
-	assert not all( fields in reply['data'] for fields in ['first', 'last', 'email', 'password', 'username', 'admin', 'alerts'] )
-	assert not all( fields in reply['data']['alerts'] for fields in ['alarm1', 'alarm2', 'sensorFault',
+	print('Register reply = {}'.format(reply))
+	assert all( fields in reply['data'] for fields in ['first', 'last', 'email', 'password', 'username', 'admin', 'alerts'] )
+	assert all( fields in reply['data']['alerts'] for fields in ['alarm1', 'alarm2', 'sensorFault',
 		'sessionChange', 'networkChange', 'powerChange', 'batteryLow', 'systemOff', 'systemOn'])
-	assert reply['data']['first'] != TEST_USER_FIRST
-	assert reply['data']['last'] != TEST_USER_LAST
-	assert reply['data']['username'] != TEST_USER_USERNAME
-	assert reply['data']['email'] != TEST_USER_EMAIL
-	assert reply['data']['password'] != TEST_USER_PASSWORD
-	assert reply['data']['admin'] != TEST_USER_ADMIN
-	assert reply['data']['alerts']['alarm1'] != TEST_USER_ALERTS_ALARM1
-	assert reply['data']['alerts']['alarm2'] != TEST_USER_ALERTS_ALARM2
-	assert reply['data']['alerts']['sensorFault'] != TEST_USER_ALERTS_SENSOR_FAULT
-	assert reply['data']['alerts']['sessionChange'] != TEST_USER_ALERTS_SESSION_CHANGE
-	assert reply['data']['alerts']['networkChange'] != TEST_USER_ALERTS_NETWORK_CHANGE
-	assert reply['data']['alerts']['powerChange'] != TEST_USER_ALERTS_POWER_CHANGE
-	assert reply['data']['alerts']['batteryLow'] != TEST_USER_ALERTS_BATTERY_LOW
-	assert reply['data']['alerts']['systemOff'] != TEST_USER_ALERTS_SYSTEM_OFF
-	assert reply['data']['alerts']['systemOn'] != TEST_USER_ALERTS_SYSTEM_ON
+	assert reply['data']['first'] == TEST_USER_FIRST
+	assert reply['data']['last'] == TEST_USER_LAST
+	assert reply['data']['username'] == TEST_USER_USERNAME
+	assert reply['data']['email'] == TEST_USER_EMAIL
+	assert reply['data']['password'] == TEST_USER_PASSWORD
+	assert reply['data']['admin'] == TEST_USER_ADMIN
+	assert reply['data']['alerts']['alarm1'] == TEST_USER_ALERTS_ALARM1
+	assert reply['data']['alerts']['alarm2'] == TEST_USER_ALERTS_ALARM2
+	assert reply['data']['alerts']['sensorFault'] == TEST_USER_ALERTS_SENSOR_FAULT
+	assert reply['data']['alerts']['sessionChange'] == TEST_USER_ALERTS_SESSION_CHANGE
+	assert reply['data']['alerts']['networkChange'] == TEST_USER_ALERTS_NETWORK_CHANGE
+	assert reply['data']['alerts']['powerChange'] == TEST_USER_ALERTS_POWER_CHANGE
+	assert reply['data']['alerts']['batteryLow'] == TEST_USER_ALERTS_BATTERY_LOW
+	assert reply['data']['alerts']['systemOff'] == TEST_USER_ALERTS_SYSTEM_OFF
+	assert reply['data']['alerts']['systemOn'] == TEST_USER_ALERTS_SYSTEM_ON
+	assert False, "Fuck"
+
+def load_test_environment(path):
+	test_env = {}
+	if os.path.exists(path):
+		with open(path, 'r') as f:
+			test_env = json.load(f)
+
+	assert test_env != {}, 'No test environment provided'
+	assert all(vars in test_env for vars in ['db_path']), 'Test environment missing variables'
+
+	return test_env
+
+@pytest.mark.unit
+def test_base(env):
+
+	# setup
+	print('Environment path = {}'.format(env))
+	test_env = load_test_environment(env)
+	tnetdatabase.test_setup(db_path=test_env['db_path'])
+	# run tests
+	api_dev_info_get()
+	api_dev_info_set()
+	api_user_register()
+	# teardown
+	tnetdatabase.test_teardown()

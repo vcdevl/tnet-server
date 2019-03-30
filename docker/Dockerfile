@@ -1,7 +1,4 @@
-FROM python:3.4-slim-jessie
+FROM python:3.7-slim-stretch
 RUN apt-get update && apt-get install --yes python3-pip
-RUN pip3 install --user --upgrade pip setuptools wheel
-WORKDIR /tnetbuild
-COPY tnetserver /tnetbuild
-COPY setup.py /tnetbuild/
-CMD ["python3", "setup.py", "sdist", "bdist_wheel"]
+RUN pip3 install --user --upgrade pip setuptools wheel pytest
+WORKDIR /build

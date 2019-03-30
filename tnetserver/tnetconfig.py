@@ -16,7 +16,7 @@ tnet_config = {
 	},
 	'database': {
 		'type': 'file',
-		'path': '/home/tgard/config/tnetdb'
+		'path': '/home/tgard/'
 	}
 }
 
@@ -49,6 +49,14 @@ def load_config():
 
 		if 'path' in config['database']:
 			tnet_config['database']['path'] = config['database']['path']
+
+def test_setup(path):
+	''' called by test framework to as part of the setup/teardown '''
+	global tnet_config
+	tnet_config['database']['path'] = path
+
+def test_teardown():
+	pass
 
 def get_config():
 	''' get config '''

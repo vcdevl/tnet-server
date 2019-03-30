@@ -51,10 +51,10 @@ def register(payload):
 	reply = {'success': False, 'data': {}, 'error': ''}
 
 	if not all(alert_fields in payload['alerts'] for alert_fields in ['alarm1', 'alarm2', 'sensorFault',
-		'sessionChange', 'networkChange', 'powerChange', 'batteryLow', 'systemOff', 'systemOn']:
+		'sessionChange', 'networkChange', 'powerChange', 'batteryLow', 'systemOff', 'systemOn']):
 		reply['error'] = 'Missing alert fields'
 		logging.warning(reply['error'])
-		return reply 
+		return reply
 
 	# first get all users
 	this_user = tnetdatabase.get_user(payload['email'])
@@ -81,13 +81,14 @@ def register(payload):
 
 		# do the database insert
 		if tnetdatabase.insert_user(new_user):
-			logging.debug("User with email={} created".format(user["email"]))
+			logging.debug("User with email={} created".format(new_user["email"]))
 			reply['data'] = new_user
 			reply['success'] = True
 		else:
 			reply['error'] = 'Failed to create user'
-			logging.warning(reply['error'])
 
+	if not reply['success']:
+		logging.warning(reply['error'])
 	return reply
 
 

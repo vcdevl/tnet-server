@@ -14,10 +14,10 @@ def update_info(payload):
 
 	reply = {'success': False, 'data':{}, 'error':''}
 
-	if tnetdatabase.update_info(name, description):
-		logging.info('Device info changed to name={} description={}'.format(name, description))
+	if tnetdatabase.set_devinfo(payload['name'], payload['description']):
+		logging.info('Device info changed to name={} description={}'.format(payload['name'], payload['description']))
 		reply['success'] = True
-		reply['data'] = {'name':name, 'description':description}
+		reply['data'] = {'name':payload['name'], 'description':payload['description']}
 	else:
 		logging.warning(reply['error'])
 

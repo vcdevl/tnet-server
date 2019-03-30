@@ -11,6 +11,7 @@ import subprocess
 import threading
 import queue
 import collections
+from functools import wraps
 import paho.mqtt.client as mqtt
 
 from tnetserver import tnetconfig, tnetuser
@@ -49,21 +50,21 @@ def send_message(rsp_topic):
 class DeviceGetInfoApi():
 	''' handler for get device info request '''
 
-	@send_response(topic='APIRSP/{}/{}/devinfo/get')
+	@send_message(rsp_topic='APIRSP/{}/{}/devinfo/get')
 	def handler(self, client_id, topic, payload):
 		return tnetdevice.get_info()
 
 class DeviceSetInfoApi():
 	''' handler for set device info request '''
 
-	@send_response(topic='APIRSP/{}/{}/devinfo/set')
+	@send_message(rsp_topic='APIRSP/{}/{}/devinfo/set')
 	def handler(self, client_id, topic, payload):
 		return tnetdevice.update_info(payload)
 
 class UserRegisterApi():
 	''' handler for registering a user with a device '''
 
-	@send_response(topic='APIRSP/{}/{}/user/register')
+	@send_message(rsp_topic='APIRSP/{}/{}/user/register')
 	def handler(self, client_id, topic, payload):
 		return tnetuser.register(payload)
 
