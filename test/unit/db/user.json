@@ -1,0 +1,1 @@
+{"user": [{"last": "Smith", "alerts": {"sensorFault": true, "systemOn": true, "networkChange": true, "systemOff": true, "powerChange": true, "alarm1": true, "sessionChange": true, "batteryLow": true, "alarm2": true}, "password": "1234", "username": "joesmith", "email": "joesmith@gmail.com", "first": "Joe", "admin": true}]}

@@ -4,7 +4,7 @@ import copy
 import sys
 import os
 
-CONFIG_FILE 		= '/etc/default/tnetserver.conf'
+CONFIG_FILE = '/etc/default/tnetserver.conf'
 
 tnet_config = {
 	'mqtt':{
@@ -17,6 +17,14 @@ tnet_config = {
 	'database': {
 		'type': 'file',
 		'path': '/home/tgard/'
+	},
+	# interfaces where user CAN'T request the following APIs
+	'policies': {
+		# all requests can be carried out over USB interface
+		'USB': [],
+		'LAN': ['/net/wifi/modemon', '/net/wifi/modemoff'],
+		'HAM': ['/net/wifi/modemon', '/net/wifi/modemoff'],
+		'LCD': []
 	}
 }
 

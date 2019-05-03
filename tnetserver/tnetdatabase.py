@@ -214,25 +214,21 @@ def get_session(id=None):
 
 	return copy.copy(all_sessions)
 
-
-
-def test_setup(db_path, clean=False):
+def db_clear():
 	global DB_PATH
 	global db
+
+	for collection in db.keys():
+		if os.path.exists(db[collection]['path'].format(DB_PATH)):
+			os.remove(db[collection]['path'].format(DB_PATH))
+
+def db_set_path(db_path):
+	global DB_PATH
+
+	if not os.path.exists(db_path):
+		logging.warning('Db path does not exist {}'.format(db_path))
+		return False
+
 	DB_PATH = db_path
-	print('Db path = {}'.format(DB_PATH))
-
-	# remove all files
-	if clean:
-		for collection in db.keys():
-			if os.path.exists(db[collection]['path'].format(DB_PATH)):
-				os.remove(db[collection]['path'].format(DB_PATH))
-
-def test_teardown(clean=False):
-	if clean:
-		global DB_PATH
-		global db
-
-		for collection in db.keys():
-			if os.path.exists(db[collection]['path'].format(DB_PATH)):
-				os.remove(db[collection]['path'].format(DB_PATH))
+	logging.debug('Db path = {}'.format(DB_PATH))
+	return True

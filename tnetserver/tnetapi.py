@@ -14,7 +14,7 @@ import collections
 from functools import wraps
 import paho.mqtt.client as mqtt
 
-from tnetserver import tnetconfig, tnetuser
+from tnetserver import tnetconfig, tnetuser, tnetnetman
 
 
 TNET_UNIT_ID = 'TNET-123456789'
@@ -23,6 +23,34 @@ tnet_apis = None
 tnet_reqq = None
 
 TnetRequest = collections.namedtuple('TnetRequest', 'client_id, topic, payload')
+
+def check_policy(rsp_topic):
+	def decorator(func):
+		@wraps(func)
+		def wrapper(*args, **kwargs):
+			global tnet_mqtt
+			global TNET_UNIT_ID
+
+			client_id = args[1]
+			topic = args[2]
+
+			# strip prefix from the client_id which should return one of the following {LCD, USB, LAN, HAM}
+			prefix = client_id.split('-')[0]
+
+			# process the topic by removing the APIREQ/{UNIT-d} part of the topic
+			tpc = '/' + '/'.join(topic.split('/')[2:])
+
+			if 'policies' in tnetconfig and \
+				prefix in tnetconfig['policies'] and \
+				tpc not in tnetconfig['policies'][prefix]:
+				return func(*args, **kwargs)
+
+			# check policy for client-id <-> api request
+			rsp = {'success': False, 'data':None, 'error':'Policy restricts client from api request'}
+			tnet_mqtt.publish_message(topic=rsp_topic.format(client_id, TNET_UNIT_ID), message=rsp)
+
+		return wrapper
+	return decorator
 
 def send_message(rsp_topic):
 	def decorator(func):
@@ -50,6 +78,7 @@ def send_message(rsp_topic):
 class DeviceGetInfoApi():
 	''' handler for get device info request '''
 
+	@check_policy(rsp_topic='APIRSP/{}/{}/devinfo/get')
 	@send_message(rsp_topic='APIRSP/{}/{}/devinfo/get')
 	def handler(self, client_id, topic, payload):
 		return tnetdevice.get_info()
@@ -57,6 +86,7 @@ class DeviceGetInfoApi():
 class DeviceSetInfoApi():
 	''' handler for set device info request '''
 
+	@check_policy(rsp_topic='APIRSP/{}/{}/devinfo/set')
 	@send_message(rsp_topic='APIRSP/{}/{}/devinfo/set')
 	def handler(self, client_id, topic, payload):
 		return tnetdevice.update_info(payload)
@@ -64,9 +94,26 @@ class DeviceSetInfoApi():
 class UserRegisterApi():
 	''' handler for registering a user with a device '''
 
+	@check_policy(rsp_topic='APIRSP/{}/{}/user/register')
 	@send_message(rsp_topic='APIRSP/{}/{}/user/register')
 	def handler(self, client_id, topic, payload):
 		return tnetuser.register(payload)
+
+class NetworkWifiEnableApi():
+	''' handler for enabling the wifi radio on the device '''
+
+	@check_policy(rsp_topic='APIRSP/{}/{}/net/wifi/modemon')
+	@send_message(rsp_topic='APIRSP/{}/{}/net/wifi/modemon')
+	def handler(self, client_id, topic, payload):
+		return tnetnetman.wifi_radio_on()
+
+class NetworkWifiDisableApi():
+	''' handler for disabling the wifi radio on the device '''
+
+	@check_policy(rsp_topic='APIRSP/{}/{}/net/wifi/modemoff')
+	@send_message(rsp_topic='APIRSP/{}/{}/net/wifi/modemoff')
+	def handler(self, client_id, topic, payload):
+		return tnetnetman.wifi_radio_off()
 
 """class TemperatureNewApi():
 	''' handler for new temperature session request'''
@@ -247,21 +294,7 @@ class NetworkWifiForgetApi():
 		rsp = {'success': True, 'data':{}, 'error':''}
 		mqtt_client.publish_message(topic='{}/{}/network/wifi/forget/RSP'.format(client_id, TNET_UNIT_ID), message=rsp)
 
-class NetworkWifiEnableApi():
-	''' handler for enabling the wifi radio on the device '''
 
-	def handler(self, client_id, topic, payload):
-		global mqtt_client
-		rsp = {'success': True, 'data':{}, 'error':''}
-		mqtt_client.publish_message(topic='{}/{}/network/wifi/enable/RSP'.format(client_id, TNET_UNIT_ID), message=rsp)
-
-class NetworkWifiDisableApi():
-	''' handler for disabling the wifi radio on the device '''
-
-	def handler(self, client_id, topic, payload):
-		global mqtt_client
-		rsp = {'success': True, 'data':{}, 'error':''}
-		mqtt_client.publish_message(topic='{}/{}/network/wifi/disable/RSP'.format(client_id, TNET_UNIT_ID), message=rsp)
 
 class NetworkWifiGetApi():
 	''' handler for getting wifi details on device '''
@@ -442,7 +475,9 @@ def start_mqtt():
 	tnet_apis = (
 		('APIREQ/{}/devinfo/get'.format(TNET_UNIT_ID), DeviceGetInfoApi()),
 		('APIREQ/{}/devinfo/set'.format(TNET_UNIT_ID), DeviceSetInfoApi()),
-		('APIREQ/{}/user/register'.format(TNET_UNIT_ID), UserRegisterApi()))
+		('APIREQ/{}/user/register'.format(TNET_UNIT_ID), UserRegisterApi()),)
+		('APIREQ/{}/net/wifi/modemon'.format(TNET_UNIT_ID), NetworkWifiEnableApi()),
+		('APIREQ/{}/net/wifi/modemoff'.format(TNET_UNIT_ID), NetworkWifiDisableApi())
 
 	tnet_reqq = queue.Queue(maxsize=50)
 	tnet_mqtt = TgMqtt()
