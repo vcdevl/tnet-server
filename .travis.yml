@@ -1,12 +1,5 @@
 language: python
 
-branches:
-    only:
-        master
-        mqtt
-        staging
-        release
-
 services:
   - docker
 
